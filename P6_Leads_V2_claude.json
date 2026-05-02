@@ -162,6 +162,74 @@
           "name": "Google Gemini API"
         }
       }
+    },
+    {
+      "id": "a1b2c3d4-0009-0009-0009-000000000009",
+      "name": "Scorer Chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [1780, 200],
+      "parameters": {
+        "promptType": "define",
+        "text": "=`You are an expert sales analyst evaluating companies as prospects for an AI workflow automation consulting firm.\n\nThe consulting service helps small to mid-size SaaS and tech companies deploy internal productivity tools using platforms like n8n, Claude, and Google Workspace. Ideal clients have operational complexity, manual or fragmented workflows, and a non-technical ops or admin function that would benefit from automation. They are NOT large enterprises that build their own automation in-house.\n\nCompany: ${ $('New Lead Added').first().json.Company }\nContact Role: ${ $('New Lead Added').first().json.Role }\n\nCompany Summary:\n${ $('Summarizer Chain').first().json.text }\n\nScoring criteria:\n- 8-10: SaaS or tech company, 10-500 employees, clear operational complexity, Google Workspace signals, non-technical ops/admin roles, no in-house automation team\n- 5-7: Relevant industry but ambiguous size, unclear automation need, or limited public information\n- 1-4: Large enterprise, non-tech industry, or builds automation in-house\n\nRespond ONLY with a valid JSON object on a single line. No markdown, no code fences, no explanation.\nFormat: {\"score\": <integer 1-10>, \"rationale\": \"<one sentence explaining the score>\"}`"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0010-0010-0010-000000000010",
+      "name": "Gemini Flash (Scorer)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1780, 420],
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "googleGeminiApi": {
+          "id": "CRED_ID_PLACEHOLDER",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0011-0011-0011-000000000011",
+      "name": "Parse Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 200],
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.text || '').trim();\nconst trigger = $('New Lead Added').first().json;\n\nlet score = 5;\nlet rationale = 'Score could not be parsed from LLM output.';\n\ntry {\n  // Strip markdown code fences if present\n  const cleaned = raw.replace(/```(?:json)?\\s*/gi, '').replace(/```\\s*/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  score = Math.min(10, Math.max(1, parseInt(parsed.score, 10)));\n  rationale = parsed.rationale || rationale;\n} catch (e) {\n  // Fallback: regex extraction\n  const scoreMatch = raw.match(/\"score\"\\s*:\\s*(\\d+)/);\n  const rationaleMatch = raw.match(/\"rationale\"\\s*:\\s*\"([^\"]+)\"/);\n  if (scoreMatch) score = Math.min(10, Math.max(1, parseInt(scoreMatch[1], 10)));\n  if (rationaleMatch) rationale = rationaleMatch[1];\n}\n\nreturn [{\n  json: {\n    score,\n    rationale,\n    company: trigger.Company || '',\n    website: trigger.Website || '',\n    contactName: trigger['Contact Name'] || '',\n    role: trigger.Role || '',\n    email: trigger.Email || '',\n    summary: $('Summarizer Chain').first().json.text || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0012-0012-0012-000000000012",
+      "name": "Route By Score",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-score",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
     }
   ],
   "connections": {
@@ -238,6 +306,50 @@
           {
             "node": "Summarizer Chain",
             "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarizer Chain": {
+      "main": [
+        [
+          {
+            "node": "Scorer Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Flash (Scorer)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Scorer Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scorer Chain": {
+      "main": [
+        [
+          {
+            "node": "Parse Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Score": {
+      "main": [
+        [
+          {
+            "node": "Route By Score",
+            "type": "main",
             "index": 0
           }
         ]
