@@ -1,0 +1,250 @@
+{
+  "id": "p6-leads-v2",
+  "name": "P6 Leads V2",
+  "active": false,
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "New Lead Added",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 4,
+      "position": [240, 300],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "SPREADSHEET_ID_PLACEHOLDER",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Companies",
+          "mode": "name"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "CRED_ID_PLACEHOLDER",
+          "name": "Google Sheets Trigger OAuth2 API"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Get Summary Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "getAll",
+        "documentId": {
+          "__rl": true,
+          "value": "SPREADSHEET_ID_PLACEHOLDER",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Summary",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CRED_ID_PLACEHOLDER",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Check 30-Day Dedup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "jsCode": "const trigger = $('New Lead Added').first().json;\nconst company = (trigger.Company || '').trim();\nconst cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);\n\nlet isRecent = false;\nconst rows = $input.all();\n\nif (rows && rows.length > 0 && rows[0].json && rows[0].json.Company) {\n  isRecent = rows.some(row => {\n    const rowCompany = (row.json.Company || '').trim();\n    if (rowCompany.toLowerCase() !== company.toLowerCase()) return false;\n    if (!row.json.Recency) return false;\n    return new Date(row.json.Recency).getTime() > cutoff;\n  });\n}\n\nreturn [{\n  json: {\n    isRecent,\n    company,\n    website: trigger.Website || '',\n    contactName: trigger['Contact Name'] || '',\n    role: trigger.Role || '',\n    email: trigger.Email || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Skip If Recent",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-dedup",
+              "leftValue": "={{ $json.isRecent }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Scrape Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://r.jina.ai/' + $('New Lead Added').first().json.Website }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Fetch News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://news.google.com/rss/search?q=' + encodeURIComponent($('New Lead Added').first().json.Company) + '&hl=en-US&gl=US&ceid=US:en' }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "Summarizer Chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [1560, 200],
+      "parameters": {
+        "promptType": "define",
+        "text": "=`You are a business analyst researching prospective consulting clients.\n\nCompany: ${ $('New Lead Added').first().json.Company }\nWebsite: ${ $('New Lead Added').first().json.Website }\n\nWebsite Content:\n${ String($('Scrape Website').first().json.data || '').slice(0, 3000) }\n\nRecent News Headlines:\n${ String($('Fetch News').first().json.data || '').slice(0, 1500) }\n\nWrite a 2-3 sentence factual summary covering: what this company does, who their customers are, and their current operational focus. Output only the summary — no labels, headers, or extra commentary.`"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0008-0008-0008-000000000008",
+      "name": "Gemini Flash",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1560, 420],
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "credentials": {
+        "googleGeminiApi": {
+          "id": "CRED_ID_PLACEHOLDER",
+          "name": "Google Gemini API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "New Lead Added": {
+      "main": [
+        [
+          {
+            "node": "Get Summary Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Summary Log": {
+      "main": [
+        [
+          {
+            "node": "Check 30-Day Dedup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 30-Day Dedup": {
+      "main": [
+        [
+          {
+            "node": "Skip If Recent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip If Recent": {
+      "main": [
+        [
+          {
+            "node": "Scrape Website",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Scrape Website": {
+      "main": [
+        [
+          {
+            "node": "Fetch News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch News": {
+      "main": [
+        [
+          {
+            "node": "Summarizer Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Flash": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarizer Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
