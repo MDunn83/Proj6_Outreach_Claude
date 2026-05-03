@@ -5,30 +5,11 @@
   "nodes": [
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000001",
-      "name": "New Lead Added",
-      "type": "n8n-nodes-base.googleSheetsTrigger",
-      "typeVersion": 4,
+      "name": "Run Workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
       "position": [240, 300],
-      "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "SPREADSHEET_ID_PLACEHOLDER",
-          "mode": "id"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "Companies",
-          "mode": "name"
-        },
-        "event": "rowAdded",
-        "options": {}
-      },
-      "credentials": {
-        "googleSheetsTriggerOAuth2Api": {
-          "id": "CRED_ID_PLACEHOLDER",
-          "name": "Google Sheets Trigger OAuth2 API"
-        }
-      }
+      "parameters": {}
     },
     {
       "id": "a1b2c3d4-0002-0002-0002-000000000002",
@@ -58,13 +39,41 @@
       }
     },
     {
+      "id": "a1b2c3d4-0019-0019-0019-000000000019",
+      "name": "Get All Companies",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [460, 440],
+      "parameters": {
+        "operation": "getAll",
+        "documentId": {
+          "__rl": true,
+          "value": "SPREADSHEET_ID_PLACEHOLDER",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Companies",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CRED_ID_PLACEHOLDER",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
       "id": "a1b2c3d4-0017-0017-0017-000000000017",
       "name": "Collect Summary Rows",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 440],
+      "position": [680, 440],
       "parameters": {
-        "jsCode": "const trigger = $('New Lead Added').first().json;\n\n// Get Summary Log runs first (listed first in fan-out from New Lead Added).\n// $('Get Summary Log').all() returns [] when the sheet has no data rows,\n// so this node always outputs exactly 1 item regardless of sheet state.\nconst summaryRows = $('Get Summary Log').all()\n  .map(r => r.json)\n  .filter(r => r && r.Company);\n\nreturn [{\n  json: {\n    summaryRows,\n    company: (trigger.Company || '').trim(),\n    website: trigger.Website || '',\n    contactName: trigger['Contact Name'] || '',\n    role: trigger.Role || '',\n    email: trigger.Email || ''\n  }\n}];"
+        "mode": "runOnceForEachItem",
+        "jsCode": "const trigger = $('New Lead Added').first().json;\n\n// Get Summary Log runs first (listed first in fan-out from Run Workflow).\n// $('Get Summary Log').all() returns [] when the sheet has no data rows,\n// so this node always outputs exactly 1 item regardless of sheet state.\nconst summaryRows = $('Get Summary Log').all()\n  .map(r => r.json)\n  .filter(r => r && r.Company);\n\nreturn [{\n  json: {\n    summaryRows,\n    company: (trigger.Company || '').trim(),\n    website: trigger.Website || '',\n    contactName: trigger['Contact Name'] || '',\n    role: trigger.Role || '',\n    email: trigger.Email || ''\n  }\n}];"
       }
     },
     {
@@ -72,8 +81,9 @@
       "name": "Check 30-Day Dedup",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 440],
+      "position": [900, 440],
       "parameters": {
+        "mode": "runOnceForEachItem",
         "jsCode": "const { company, website, contactName, role, email, summaryRows } = $input.first().json;\nconst cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);\n\nlet isRecent = false;\nif (summaryRows && summaryRows.length > 0) {\n  isRecent = summaryRows.some(row => {\n    const rowCompany = (row.Company || '').trim();\n    if (rowCompany.toLowerCase() !== company.toLowerCase()) return false;\n    if (!row.Recency) return false;\n    return new Date(row.Recency).getTime() > cutoff;\n  });\n}\n\nreturn [{ json: { isRecent, company, website, contactName, role, email } }];"
       }
     },
@@ -82,7 +92,7 @@
       "name": "Skip If Recent",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [900, 440],
+      "position": [1120, 440],
       "parameters": {
         "conditions": {
           "options": {
@@ -110,7 +120,7 @@
       "name": "Scrape Website",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1120, 300],
+      "position": [1340, 300],
       "parameters": {
         "method": "GET",
         "url": "={{ 'https://r.jina.ai/' + $('New Lead Added').first().json.Website }}",
@@ -130,7 +140,7 @@
       "name": "Fetch News",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 300],
+      "position": [1560, 300],
       "parameters": {
         "method": "GET",
         "url": "={{ 'https://news.google.com/rss/search?q=' + encodeURIComponent($('New Lead Added').first().json.Company) + '&hl=en-US&gl=US&ceid=US:en' }}",
@@ -150,7 +160,7 @@
       "name": "Summarizer Chain",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.4,
-      "position": [1560, 300],
+      "position": [1780, 300],
       "parameters": {
         "promptType": "define",
         "text": "=`You are a business analyst researching prospective consulting clients.\n\nCompany: ${ $('New Lead Added').first().json.Company }\nWebsite: ${ $('New Lead Added').first().json.Website }\n\nWebsite Content:\n${ String($('Scrape Website').first().json.data || '').slice(0, 3000) }\n\nRecent News Headlines:\n${ String($('Fetch News').first().json.data || '').slice(0, 1500) }\n\nWrite a 2-3 sentence factual summary covering: what this company does, who their customers are, and their current operational focus. Output only the summary — no labels, headers, or extra commentary.`"
@@ -161,7 +171,7 @@
       "name": "Gemini Flash",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [1560, 500],
+      "position": [1780, 500],
       "parameters": {
         "modelName": "models/gemini-1.5-flash",
         "options": {
@@ -180,7 +190,7 @@
       "name": "Scorer Chain",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.4,
-      "position": [1780, 300],
+      "position": [2000, 300],
       "parameters": {
         "promptType": "define",
         "text": "=`You are an expert sales analyst evaluating companies as prospects for an AI workflow automation consulting firm.\n\nThe consulting service helps small to mid-size SaaS and tech companies deploy internal productivity tools using platforms like n8n, Claude, and Google Workspace. Ideal clients have operational complexity, manual or fragmented workflows, and a non-technical ops or admin function that would benefit from automation. They are NOT large enterprises that build their own automation in-house.\n\nCompany: ${ $('New Lead Added').first().json.Company }\nContact Role: ${ $('New Lead Added').first().json.Role }\n\nCompany Summary:\n${ $('Summarizer Chain').first().json.text }\n\nScoring criteria (score relative to fit for this consulting service):\n- 7-10: SaaS or tech company, 10-500 employees, clear operational complexity, Google Workspace likely in use, non-technical ops/admin roles present, no in-house automation team — strong candidate for outreach\n- 4-6: Relevant industry but ambiguous company size, unclear automation need, or limited public information available\n- 1-3: Large enterprise with own engineering/automation team, non-tech industry, or minimal digital presence\n\nRespond ONLY with a valid JSON object on a single line. No markdown, no code fences, no explanation.\nFormat: {\"score\": <integer 1-10>, \"rationale\": \"<one sentence explaining the score>\"}`"
@@ -191,7 +201,7 @@
       "name": "Gemini Flash (Scorer)",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [1780, 500],
+      "position": [2000, 500],
       "parameters": {
         "modelName": "models/gemini-1.5-flash",
         "options": {
@@ -210,8 +220,9 @@
       "name": "Parse Score",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2000, 300],
+      "position": [2220, 300],
       "parameters": {
+        "mode": "runOnceForEachItem",
         "jsCode": "const raw = ($input.first().json.text || '').trim();\nconst trigger = $('New Lead Added').first().json;\n\nlet score = 5;\nlet rationale = 'Score could not be parsed from LLM output.';\n\ntry {\n  const cleaned = raw.replace(/```(?:json)?\\s*/gi, '').replace(/```\\s*/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  score = Math.min(10, Math.max(1, parseInt(parsed.score, 10)));\n  rationale = parsed.rationale || rationale;\n} catch (e) {\n  const scoreMatch = raw.match(/\"score\"\\s*:\\s*(\\d+)/);\n  const rationaleMatch = raw.match(/\"rationale\"\\s*:\\s*\"([^\"]+)\"/);\n  if (scoreMatch) score = Math.min(10, Math.max(1, parseInt(scoreMatch[1], 10)));\n  if (rationaleMatch) rationale = rationaleMatch[1];\n}\n\nreturn [{\n  json: {\n    score,\n    rationale,\n    company: trigger.Company || '',\n    website: trigger.Website || '',\n    contactName: trigger['Contact Name'] || '',\n    role: trigger.Role || '',\n    email: trigger.Email || '',\n    summary: $('Summarizer Chain').first().json.text || ''\n  }\n}];"
       }
     },
@@ -220,7 +231,7 @@
       "name": "Route By Score",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2220, 300],
+      "position": [2440, 300],
       "parameters": {
         "conditions": {
           "options": {
@@ -248,7 +259,7 @@
       "name": "Email Writer Chain",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.4,
-      "position": [2440, 180],
+      "position": [2660, 180],
       "parameters": {
         "promptType": "define",
         "text": "=`You are writing a cold outreach email on behalf of an independent AI workflow automation consultant.\n\nThe consultant helps small to mid-size SaaS and tech companies deploy internal productivity tools — things like automating repetitive ops work, connecting the tools a team already uses, and reducing manual handoffs — using n8n, Claude, and Google Workspace. No enterprise contracts, no big implementation teams. Just practical automation that actually gets used.\n\nYou are writing to:\n- Name: ${ $('Parse Score').first().json.contactName }\n- Role: ${ $('Parse Score').first().json.role }\n- Company: ${ $('Parse Score').first().json.company }\n\nWhat you know about their company:\n${ $('Parse Score').first().json.summary }\n\nWrite a cold outreach email body with exactly this structure:\n\nParagraph 1 (3-4 sentences): Open with one specific, genuine observation about the company — something from what you know about them. Briefly introduce who you are and what you do. Keep it personal, like you actually looked them up.\n\nParagraph 2 (3-4 sentences): Describe a realistic workflow pain point that a company like theirs likely has. Connect it to what you offer — concretely, not vaguely. Give them a reason to see this as relevant to their work.\n\nParagraph 3 (2-3 sentences): Soft, low-pressure ask — suggest a brief call to see if there is a fit. Make it easy to say yes or no.\n\nTone rules:\n- Friendly and professional. Write like a real person, not a marketing team.\n- No buzzwords: do not use synergy, leverage, streamline, world-class, cutting-edge, game-changing, or innovative.\n- No hype. No hollow compliments.\n- Do NOT include a subject line, greeting, or sign-off — output the three body paragraphs only, separated by blank lines.`"
@@ -259,7 +270,7 @@
       "name": "Gemini Flash (Email)",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [2440, 400],
+      "position": [2660, 400],
       "parameters": {
         "modelName": "models/gemini-1.5-flash",
         "options": {
@@ -278,8 +289,9 @@
       "name": "Guard Email Body",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2660, 180],
+      "position": [2880, 180],
       "parameters": {
+        "mode": "runOnceForEachItem",
         "jsCode": "const body = ($input.first().json.text || '').trim();\nif (!body) {\n  throw new Error(\n    'Email Writer Chain returned an empty body for ' +\n    $('Parse Score').first().json.company +\n    ' — execution stopped before sending.'\n  );\n}\nreturn $input.all();"
       }
     },
@@ -288,7 +300,7 @@
       "name": "Send Email",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
-      "position": [2880, 180],
+      "position": [3100, 180],
       "parameters": {
         "resource": "message",
         "operation": "send",
@@ -310,7 +322,7 @@
       "name": "Log to Summary",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [3100, 300],
+      "position": [3320, 300],
       "parameters": {
         "operation": "append",
         "documentId": {
@@ -344,7 +356,7 @@
     }
   ],
   "connections": {
-    "New Lead Added": {
+    "Run Workflow": {
       "main": [
         [
           {
@@ -352,6 +364,22 @@
             "type": "main",
             "index": 0
           },
+          {
+            "node": "Get All Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Summary Log": {
+      "main": [
+        []
+      ]
+    },
+    "Get All Companies": {
+      "main": [
+        [
           {
             "node": "Collect Summary Rows",
             "type": "main",
