@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Before building, read n8n_SKILL.md for n8n-specific build rules.
+
 ## What You Are Building
 
 An n8n workflow JSON file that automates lead enrichment and outreach for AI workflow automation consulting. The output is a single importable n8n workflow JSON file named `P6_Leads_V2_claude.json`.
