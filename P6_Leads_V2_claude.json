@@ -408,7 +408,8 @@
             "Company": "={{ $json.company }}",
             "Summary": "={{ $json.rationale }}",
             "Rating": "={{ $json.score }}",
-            "Orig Text": "={{ $json.summary }}"
+            "Orig Text": "={{ $json.summary }}",
+            "Recency": "={{ $now.toISO() }}"
           },
           "matchingColumns": [
             "id"
@@ -514,65 +515,6 @@
           "name": "Google Sheets OAuth2 API"
         }
       }
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "5005b385-7380-48ba-a474-552b197270f1",
-              "name": "content",
-              "value": "={{ $('Scrape Website').item.json.data }}",
-              "type": "string"
-            },
-            {
-              "id": "af43bc51-f31c-44db-825f-6f49bfd76793",
-              "name": "news",
-              "value": "={{ $json.data }}",
-              "type": "string"
-            },
-            {
-              "id": "1518fa6c-60fa-4e5e-ab2b-065429eb6448",
-              "name": "company",
-              "value": "={{ $('Skip If Recent').item.json.company }}",
-              "type": "string"
-            },
-            {
-              "id": "b2949cdd-ec62-421b-bb29-30e9abc9cad6",
-              "name": "website",
-              "value": "={{ $('Skip If Recent').item.json.website }}",
-              "type": "string"
-            },
-            {
-              "id": "031e0e83-16f1-40f0-a23b-eb221c0b8fa7",
-              "name": "contactName",
-              "value": "={{ $('Skip If Recent').item.json.contactName }}",
-              "type": "string"
-            },
-            {
-              "id": "68cd109a-3fb9-415d-a5bc-6b16821b0106",
-              "name": "role",
-              "value": "={{ $('Skip If Recent').item.json.role }}",
-              "type": "string"
-            },
-            {
-              "id": "6da9daa3-843d-42d2-9061-4e8482d8e08c",
-              "name": "email",
-              "value": "={{ $('Skip If Recent').item.json.email }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        5120,
-        1712
-      ],
-      "id": "11f7b114-80a9-4d34-a222-3439792235ca",
-      "name": "Edit Fields"
     },
     {
       "parameters": {
@@ -794,11 +736,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "Edit Fields": {
-      "main": [
-        []
       ]
     },
     "Code in JavaScript": {
